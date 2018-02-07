@@ -554,3 +554,47 @@ PARAM_DEFINE_FLOAT(MC_TPA_RATE_I, 0.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_TPA_RATE_D, 0.0f);
+/**
+ * Start omega for sweep
+ *
+ * @min 0.0
+ * @max 100
+ * @decimal 2
+ * @increment 0.01
+ * @group FW Attitude Control
+ */
+PARAM_DEFINE_FLOAT(SW_START_OMG, 3.0f);
+
+/**
+ * End omega for sweep
+ *
+ * @min 0.0
+ * @max 100
+ * @decimal 2
+ * @increment 0.01
+ * @group FW Attitude Control
+ */
+PARAM_DEFINE_FLOAT(SW_END_OMG, 36.0f);
+
+
+/**
+ * Total time for sweep
+ *
+ * @min 0.0
+ * @max 1000
+ * @decimal 2
+ * @increment 0.01
+ * @group FW Attitude Control
+ */
+PARAM_DEFINE_FLOAT(SW_TIME, 15.0f);
+
+/**
+ *  Amp for sweep
+ *
+ * @min 0.0
+ * @max 1
+ * @decimal 2
+ * @increment 0.01
+ * @group FW Attitude Control
+ */
+PARAM_DEFINE_FLOAT(SW_AMP, 0.3f);

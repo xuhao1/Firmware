@@ -83,6 +83,8 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/uORB.h>
+#include <systemlib/mavlink_log.h>
+#include <mathlib/math/filter/LowPassFilter2p.hpp>
 
 /**
  * Multicopter attitude control app start / stop handling function
@@ -101,6 +103,30 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define AXIS_COUNT 3
 
 #define MAX_GYRO_COUNT 3
+
+__inline float sweep_signal_func(float t, float T, float omg_min, float omg_max, float c1, float c2) {
+	float theta = t * omg_min + (omg_max - omg_min) * c2 * (T / c1 * (expf(c1 * t / T) - 1) - t);
+	return sinf(theta);
+}
+
+__inline float AWGN_generator(
+		void) {/* Generates additive white Gaussian Noise samples with zero mean and a standard deviation of 1. */
+
+	float temp1 = 0;
+	float temp2 = 0;
+	float result = 0;
+	temp2 = (rand() / ((float) RAND_MAX)); /*  rand() function generates an
+                                                       integer between 0 and  RAND_MAX,
+                                                       which is defined in stdlib.h.
+                                                   */
+
+	temp1 = cosf((2.0f * (float) M_PI) * rand() / (RAND_MAX));
+	result = sqrtf(-2.0f * logf(temp2)) * temp1;
+
+	return result;    // return the generated random sample to the caller
+
+}// end AWGN_generator()
+
 
 class MulticopterAttitudeControl
 {
@@ -232,6 +258,11 @@ private:
 
 		param_t board_offset[3];
 
+		param_t sw_start_omg;
+		param_t sw_end_omg;
+		param_t sw_time;
+		param_t sw_amp;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -271,10 +302,18 @@ private:
 
 		float board_offset[3];
 
+		float sw_start_omg;
+		float sw_end_omg;
+		float sw_time;
+		float sw_amp;
 	}		_params;
 
 	TailsitterRecovery *_ts_opt_recovery{nullptr};	/**< Computes optimal rates for tailsitter recovery */
 
+	math::LowPassFilter2p inject_sweep_filter;
+	float start_sweep_time;
+	bool is_in_sweep_process;
+	orb_advert_t    _mavlink_log_pub;
 	/**
 	 * Update our local parameter cache.
 	 */
@@ -295,6 +334,7 @@ private:
 	void		vehicle_rates_setpoint_poll();
 	void		vehicle_status_poll();
 
+	float inject_control_pitch(float u, float t);
 	/**
 	 * Attitude controller.
 	 */
@@ -372,7 +412,11 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_saturation_status{},
 	/* performance counters */
 	_loop_perf(perf_alloc(PC_ELAPSED, "mc_att_control")),
-	_controller_latency_perf(perf_alloc_once(PC_ELAPSED, "ctrl_latency"))
+	_controller_latency_perf(perf_alloc_once(PC_ELAPSED, "ctrl_latency")),
+	inject_sweep_filter(250,10),
+	start_sweep_time(0),
+	is_in_sweep_process(false),
+	_mavlink_log_pub(nullptr)
 {
 	for (uint8_t i = 0; i < MAX_GYRO_COUNT; i++) {
 		_sensor_gyro_sub[i] = -1;
@@ -467,6 +511,11 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.board_offset[0]		=	param_find("SENS_BOARD_X_OFF");
 	_params_handles.board_offset[1]		=	param_find("SENS_BOARD_Y_OFF");
 	_params_handles.board_offset[2]		=	param_find("SENS_BOARD_Z_OFF");
+
+	_params_handles.sw_start_omg = param_find("SW_START_OMG");
+	_params_handles.sw_end_omg = param_find("SW_END_OMG");
+	_params_handles.sw_time = param_find("SW_TIME");
+	_params_handles.sw_amp = param_find("SW_AMP");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -631,6 +680,13 @@ MulticopterAttitudeControl::parameters_update()
 					 M_DEG_TO_RAD_F * _params.board_offset[1],
 					 M_DEG_TO_RAD_F * _params.board_offset[2]);
 	_board_rotation = board_rotation_offset * _board_rotation;
+
+
+    param_get(_params_handles.sw_start_omg, &_params.sw_start_omg);
+    param_get(_params_handles.sw_end_omg, &_params.sw_end_omg);
+    param_get(_params_handles.sw_time, &_params.sw_time);
+    param_get(_params_handles.sw_amp, &_params.sw_amp);
+    inject_sweep_filter.set_cutoff_frequency(250, _params.sw_end_omg);
 }
 
 void
@@ -1060,6 +1116,26 @@ MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 	mc_att_control::g_control->task_main();
 }
 
+float MulticopterAttitudeControl::inject_control_pitch(float u, float t) {
+	if (_manual_control_sp.aux4 > 0.9f) {
+		if (!is_in_sweep_process) {
+			start_sweep_time = t;
+			mavlink_log_info(&_mavlink_log_pub, "Start sweep");
+		}
+		is_in_sweep_process = true;
+	} else {
+		is_in_sweep_process = false;
+	}
+
+	if (is_in_sweep_process && (t - start_sweep_time) < _params.sw_time) {
+		float inject = sweep_signal_func(t - start_sweep_time, _params.sw_time, _params.sw_start_omg,
+										 _params.sw_end_omg, 4.0,
+										 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
+		return math::constrain(u + inject * _params.sw_amp, -1.0f, 1.0f);
+	}
+	return u;
+}
+
 void
 MulticopterAttitudeControl::task_main()
 {
@@ -1230,6 +1306,9 @@ MulticopterAttitudeControl::task_main()
 
 			if (_v_control_mode.flag_control_rates_enabled) {
 				control_attitude_rates(dt);
+
+				_att_control(1) = inject_control_pitch(
+						_att_control(1), hrt_absolute_time() / 1000000.0f);
 
 				/* publish actuator controls */
 				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
