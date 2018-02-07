@@ -678,6 +678,8 @@ void Logger::add_system_identification_topics()
 	add_topic("actuator_controls_0");
 	add_topic("actuator_controls_1");
 	add_topic("sensor_combined");
+	add_topic("sensor_gyro");
+	add_topic("sensor_accel");
 }
 
 int Logger::add_topics_from_file(const char *fname)
