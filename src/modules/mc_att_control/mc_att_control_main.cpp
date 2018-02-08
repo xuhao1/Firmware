@@ -203,6 +203,11 @@ private:
 	float				_thrust_sp;		/**< thrust setpoint */
 	math::Vector<3>		_att_control;	/**< attitude control vector */
 
+	math::Vector<3>     _rate_inject = {0};
+    float				actuator_control_inject[4] = {0};
+
+	uint 				inject_channel = 1;
+
 	math::Matrix<3, 3>  _I;				/**< identity matrix */
 
 	math::Matrix<3, 3>	_board_rotation = {};	/**< rotation matrix for the orientation that the board is mounted */
@@ -259,6 +264,7 @@ private:
 		param_t board_offset[3];
 
 		param_t sw_start_omg;
+		param_t sw_mid_omg;
 		param_t sw_end_omg;
 		param_t sw_time;
 		param_t sw_amp;
@@ -303,6 +309,7 @@ private:
 		float board_offset[3];
 
 		float sw_start_omg;
+        float sw_mid_omg;
 		float sw_end_omg;
 		float sw_time;
 		float sw_amp;
@@ -334,7 +341,10 @@ private:
 	void		vehicle_rates_setpoint_poll();
 	void		vehicle_status_poll();
 
-	float inject_control_pitch(float u, float t);
+	void inject_control(float t);
+
+	bool system_enable_inject(float t);
+
 	/**
 	 * Attitude controller.
 	 */
@@ -513,6 +523,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.board_offset[2]		=	param_find("SENS_BOARD_Z_OFF");
 
 	_params_handles.sw_start_omg = param_find("SW_START_OMG");
+	_params_handles.sw_mid_omg = param_find("SW_MID_OMG");
 	_params_handles.sw_end_omg = param_find("SW_END_OMG");
 	_params_handles.sw_time = param_find("SW_TIME");
 	_params_handles.sw_amp = param_find("SW_AMP");
@@ -683,6 +694,7 @@ MulticopterAttitudeControl::parameters_update()
 
 
     param_get(_params_handles.sw_start_omg, &_params.sw_start_omg);
+	param_get(_params_handles.sw_mid_omg, &_params.sw_mid_omg);
     param_get(_params_handles.sw_end_omg, &_params.sw_end_omg);
     param_get(_params_handles.sw_time, &_params.sw_time);
     param_get(_params_handles.sw_amp, &_params.sw_amp);
@@ -1116,7 +1128,7 @@ MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 	mc_att_control::g_control->task_main();
 }
 
-float MulticopterAttitudeControl::inject_control_pitch(float u, float t) {
+bool MulticopterAttitudeControl::system_enable_inject(float t) {
 	if (_manual_control_sp.aux4 > 0.9f) {
 		if (!is_in_sweep_process) {
 			start_sweep_time = t;
@@ -1127,13 +1139,41 @@ float MulticopterAttitudeControl::inject_control_pitch(float u, float t) {
 		is_in_sweep_process = false;
 	}
 
-	if (is_in_sweep_process && (t - start_sweep_time) < _params.sw_time) {
-		float inject = sweep_signal_func(t - start_sweep_time, _params.sw_time, _params.sw_start_omg,
+	return  is_in_sweep_process && ((t - start_sweep_time) < _params.sw_time);
+}
+
+
+void MulticopterAttitudeControl::inject_control(float t) {
+    actuator_control_inject[0] = 0;
+    actuator_control_inject[1] = 0;
+    actuator_control_inject[2] = 0;
+    actuator_control_inject[3] = 0;
+    _rate_inject(0) = 0;
+    _rate_inject(1) = 0;
+    _rate_inject(2) = 0;
+
+    if (not system_enable_inject(t))
+	{
+		return;
+	}
+
+	float t_process_started = t - start_sweep_time;
+
+	if (t_process_started < _params.sw_time/2 )
+	{
+		float inject = sweep_signal_func(t - start_sweep_time, _params.sw_time/2, _params.sw_start_omg,
+										 _params.sw_mid_omg*1.2f, 4.0,
+									 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
+		_rate_inject(inject_channel) = inject;
+	}
+    else
+	{
+		float inject = sweep_signal_func(t - start_sweep_time - _params.sw_time/2, _params.sw_time/2, _params.sw_mid_omg /1.2f,
 										 _params.sw_end_omg, 4.0,
 										 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
-		return math::constrain(u + inject * _params.sw_amp, -1.0f, 1.0f);
+		actuator_control_inject[inject_channel] = inject;
 	}
-	return u;
+
 }
 
 void
@@ -1223,6 +1263,8 @@ MulticopterAttitudeControl::task_main()
 			sensor_correction_poll();
 			sensor_bias_poll();
 
+			inject_control(hrt_absolute_time()/1000000.0f);
+
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
 			 * or roll (yaw can rotate 360 in normal att control).  If both are true don't
 			 * even bother running the attitude controllers */
@@ -1305,16 +1347,15 @@ MulticopterAttitudeControl::task_main()
 			}
 
 			if (_v_control_mode.flag_control_rates_enabled) {
+                _rates_sp(0) = _rates_sp(0) + _rate_inject(0);
+				_rates_sp(1) = _rates_sp(1) + _rate_inject(1);
+				_rates_sp(2) = _rates_sp(2) + _rate_inject(2);
 				control_attitude_rates(dt);
 
-				_att_control(1) = inject_control_pitch(
-						_att_control(1), hrt_absolute_time() / 1000000.0f);
-
-				/* publish actuator controls */
-				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
-				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
-				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
-				_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
+				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f + actuator_control_inject[0];
+				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f + actuator_control_inject[1];
+				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f + actuator_control_inject[2];
+				_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f + actuator_control_inject[3];
 				_actuators.control[7] = _v_att_sp.landing_gear;
 				_actuators.timestamp = hrt_absolute_time();
 				_actuators.timestamp_sample = _sensor_gyro.timestamp;
