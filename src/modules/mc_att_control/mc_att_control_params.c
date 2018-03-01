@@ -561,7 +561,7 @@ PARAM_DEFINE_FLOAT(MC_TPA_RATE_D, 0.0f);
  * @max 100
  * @decimal 2
  * @increment 0.01
- * @group FW Attitude Control
+ * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(SW_START_OMG, 3.0f);
 
@@ -572,7 +572,7 @@ PARAM_DEFINE_FLOAT(SW_START_OMG, 3.0f);
  * @max 100
  * @decimal 2
  * @increment 0.01
- * @group FW Attitude Control
+ * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(SW_END_OMG, 36.0f);
 
@@ -583,7 +583,7 @@ PARAM_DEFINE_FLOAT(SW_END_OMG, 36.0f);
  * @max 100
  * @decimal 2
  * @increment 0.01
- * @group FW Attitude Control
+ * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(SW_MID_OMG, 15.0f);
 
@@ -595,7 +595,7 @@ PARAM_DEFINE_FLOAT(SW_MID_OMG, 15.0f);
  * @max 1000
  * @decimal 2
  * @increment 0.01
- * @group FW Attitude Control
+ * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(SW_TIME, 15.0f);
 
@@ -606,6 +606,17 @@ PARAM_DEFINE_FLOAT(SW_TIME, 15.0f);
  * @max 1
  * @decimal 2
  * @increment 0.01
- * @group FW Attitude Control
+ * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(SW_AMP, 0.3f);
+PARAM_DEFINE_FLOAT(SW_AMP, 0.1f);
+
+/**
+ *  Amp for sweep rate
+ *
+ * @min 0.0
+ * @max 1
+ * @decimal 2
+ * @increment 0.01
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(SW_AMP_RCMD, 0.2f);

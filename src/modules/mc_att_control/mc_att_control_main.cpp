@@ -268,6 +268,7 @@ private:
 		param_t sw_end_omg;
 		param_t sw_time;
 		param_t sw_amp;
+		param_t sw_amp_rate_cmd;
 
 	}		_params_handles;		/**< handles for interesting parameters */
 
@@ -313,6 +314,7 @@ private:
 		float sw_end_omg;
 		float sw_time;
 		float sw_amp;
+		float sw_amp_rate_cmd;
 	}		_params;
 
 	TailsitterRecovery *_ts_opt_recovery{nullptr};	/**< Computes optimal rates for tailsitter recovery */
@@ -527,6 +529,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.sw_end_omg = param_find("SW_END_OMG");
 	_params_handles.sw_time = param_find("SW_TIME");
 	_params_handles.sw_amp = param_find("SW_AMP");
+	_params_handles.sw_amp_rate_cmd = param_find("SW_AMP_RCMD");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -698,6 +701,7 @@ MulticopterAttitudeControl::parameters_update()
     param_get(_params_handles.sw_end_omg, &_params.sw_end_omg);
     param_get(_params_handles.sw_time, &_params.sw_time);
     param_get(_params_handles.sw_amp, &_params.sw_amp);
+    param_get(_params_handles.sw_amp_rate_cmd, &_params.sw_amp_rate_cmd);
     inject_sweep_filter.set_cutoff_frequency(250, _params.sw_end_omg);
 }
 
@@ -1144,6 +1148,10 @@ bool MulticopterAttitudeControl::system_enable_inject(float t) {
 
 
 void MulticopterAttitudeControl::inject_control(float t) {
+
+	static int count = 0;
+	count ++;
+	//Clear last inject values
     actuator_control_inject[0] = 0;
     actuator_control_inject[1] = 0;
     actuator_control_inject[2] = 0;
@@ -1158,20 +1166,29 @@ void MulticopterAttitudeControl::inject_control(float t) {
 	}
 
 	float t_process_started = t - start_sweep_time;
-
+	
 	if (t_process_started < _params.sw_time/2 )
 	{
-		float inject = sweep_signal_func(t - start_sweep_time, _params.sw_time/2, _params.sw_start_omg,
+		//Inject to rate cmd
+		float inject = sweep_signal_func(t_process_started, _params.sw_time/2, _params.sw_start_omg,
 										 _params.sw_mid_omg*1.2f, 4.0,
 									 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
-		_rate_inject(inject_channel) = inject;
+		_rate_inject(inject_channel) = inject * _params.sw_amp_rate_cmd;
+		if (count % 50 == 0)
+			mavlink_log_info(&_mavlink_log_pub, "Sweep %4.3f(%3.2f) ang rate %3.2f",
+			 (double)t_process_started,(double) _params.sw_time, (double)_rate_inject(inject_channel));
 	}
     else
 	{
+		//Inject to u
 		float inject = sweep_signal_func(t - start_sweep_time - _params.sw_time/2, _params.sw_time/2, _params.sw_mid_omg /1.2f,
 										 _params.sw_end_omg, 4.0,
 										 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
-		actuator_control_inject[inject_channel] = inject;
+		actuator_control_inject[inject_channel] = inject * _params.sw_amp;
+		if (count % 50 == 0)
+			mavlink_log_info(&_mavlink_log_pub, "Sweep %4.3f u %3.2f",
+								(double)t_process_started,
+							 (double)actuator_control_inject[inject_channel]);
 	}
 
 }
@@ -1352,14 +1369,25 @@ MulticopterAttitudeControl::task_main()
 				_rates_sp(2) = _rates_sp(2) + _rate_inject(2);
 				control_attitude_rates(dt);
 
-				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f + actuator_control_inject[0];
-				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f + actuator_control_inject[1];
-				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f + actuator_control_inject[2];
-				_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f + actuator_control_inject[3];
+
+				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
+				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;// + actuator_control_inject[1];
+				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;// + actuator_control_inject[2];
+				_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;// + actuator_control_inject[3];
 				_actuators.control[7] = _v_att_sp.landing_gear;
 				_actuators.timestamp = hrt_absolute_time();
 				_actuators.timestamp_sample = _sensor_gyro.timestamp;
 
+				_actuators.control[0] += actuator_control_inject[0];
+				_actuators.control[1] += actuator_control_inject[1];
+				_actuators.control[2] += actuator_control_inject[2];
+				_actuators.control[3] += actuator_control_inject[3];
+
+				static int count = 0;
+				count ++;
+				if (count % 50 == 0)
+					mavlink_log_info(&_mavlink_log_pub, "u %3.2f %3.2f inj %3.2f",(double)_att_control(1),
+					(double)_actuators.control[1],(double)actuator_control_inject[1]);
 				/* scale effort by battery status */
 				if (_params.bat_scale_en && _battery_status.scale > 0.0f) {
 					for (int i = 0; i < 4; i++) {
