@@ -577,18 +577,6 @@ PARAM_DEFINE_FLOAT(SW_START_OMG, 3.0f);
 PARAM_DEFINE_FLOAT(SW_END_OMG, 36.0f);
 
 /**
- * Mid omg for inject in angular rate or u
- *
- * @min 0.0
- * @max 100
- * @decimal 2
- * @increment 0.01
- * @group Multicopter Attitude Control
- */
-PARAM_DEFINE_FLOAT(SW_MID_OMG, 15.0f);
-
-
-/**
  * Total time for sweep
  *
  * @min 0.0

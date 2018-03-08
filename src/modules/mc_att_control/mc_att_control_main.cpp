@@ -264,7 +264,6 @@ private:
 		param_t board_offset[3];
 
 		param_t sw_start_omg;
-		param_t sw_mid_omg;
 		param_t sw_end_omg;
 		param_t sw_time;
 		param_t sw_amp;
@@ -525,7 +524,6 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.board_offset[2]		=	param_find("SENS_BOARD_Z_OFF");
 
 	_params_handles.sw_start_omg = param_find("SW_START_OMG");
-	_params_handles.sw_mid_omg = param_find("SW_MID_OMG");
 	_params_handles.sw_end_omg = param_find("SW_END_OMG");
 	_params_handles.sw_time = param_find("SW_TIME");
 	_params_handles.sw_amp = param_find("SW_AMP");
@@ -697,7 +695,6 @@ MulticopterAttitudeControl::parameters_update()
 
 
     param_get(_params_handles.sw_start_omg, &_params.sw_start_omg);
-	param_get(_params_handles.sw_mid_omg, &_params.sw_mid_omg);
     param_get(_params_handles.sw_end_omg, &_params.sw_end_omg);
     param_get(_params_handles.sw_time, &_params.sw_time);
     param_get(_params_handles.sw_amp, &_params.sw_amp);
@@ -1166,31 +1163,17 @@ void MulticopterAttitudeControl::inject_control(float t) {
 	}
 
 	float t_process_started = t - start_sweep_time;
-	
-	if (t_process_started < _params.sw_time/2 )
-	{
-		//Inject to rate cmd
-		float inject = sweep_signal_func(t_process_started, _params.sw_time/2, _params.sw_start_omg,
-										 _params.sw_mid_omg*1.2f, 4.0,
-									 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
-		_rate_inject(inject_channel) = inject * _params.sw_amp_rate_cmd;
-		if (count % 50 == 0)
-			mavlink_log_info(&_mavlink_log_pub, "Sweep %4.3f(%3.2f) ang rate %3.2f",
-			 (double)t_process_started,(double) _params.sw_time, (double)_rate_inject(inject_channel));
-	}
-    else
-	{
-		//Inject to u
-		float inject = sweep_signal_func(t - start_sweep_time - _params.sw_time/2, _params.sw_time/2, _params.sw_mid_omg /1.2f,
-										 _params.sw_end_omg, 4.0,
-										 0.0187) + inject_sweep_filter.apply(0.1f * AWGN_generator());
-		actuator_control_inject[inject_channel] = inject * _params.sw_amp;
-		if (count % 50 == 0)
-			mavlink_log_info(&_mavlink_log_pub, "Sweep %4.3f u %3.2f",
-								(double)t_process_started,
-							 (double)actuator_control_inject[inject_channel]);
-	}
 
+	//Inject to u
+	float inject = sweep_signal_func(t - start_sweep_time, _params.sw_time, _params.sw_start_omg,
+									 _params.sw_end_omg, 4.0,
+									 0.0187) +
+				   inject_sweep_filter.apply(0.1f * AWGN_generator());
+	actuator_control_inject[inject_channel] = inject * _params.sw_amp;
+	if (count % 50 == 0)
+		mavlink_log_info(&_mavlink_log_pub, "Sweep %4.3f u %3.2f",
+						 (double)t_process_started,
+						 (double)actuator_control_inject[inject_channel]);
 }
 
 void
