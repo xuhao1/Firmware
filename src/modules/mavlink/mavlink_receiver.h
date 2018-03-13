@@ -77,7 +77,7 @@
 #include <uORB/topics/transponder_report.h>
 #include <uORB/topics/gps_inject_data.h>
 #include <uORB/topics/collision_report.h>
-#include <uORB/topics/vehicle_iden_status.h>
+#include <uORB/topics/vehicle_iden_cmd.h>
 
 #include "mavlink_mission.h"
 #include "mavlink_parameters.h"

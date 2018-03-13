@@ -53,7 +53,7 @@
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vtol_vehicle_status.h>
-#include <uORB/topics/vehicle_iden_status.h>
+#include <uORB/topics/vehicle_iden_cmd.h>
 
 MissionBlock::MissionBlock(Navigator *navigator, const char *name) :
 	NavigatorMode(navigator, name),
@@ -422,7 +422,7 @@ MissionBlock::issue_command(const mission_item_s &item)
 	if (item.nav_cmd == NAV_CMD_USER1)
 	{
 		PX4_INFO("DO_SET IDENIFICATION");
-		vehicle_iden_status_s iden = {};
+		vehicle_iden_cmd_s iden = {};
 		iden.timestamp = hrt_absolute_time();
 		iden.iden_state = item.enable_inject;
 		iden.inject_channel = item.inject_channel;
@@ -440,10 +440,10 @@ MissionBlock::issue_command(const mission_item_s &item)
 
 		if (_iden_pub != nullptr)
 		{
-			orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
+			orb_publish(ORB_ID(vehicle_iden_cmd), _iden_pub, &iden);
 		} else {
-			_iden_pub = orb_advertise(ORB_ID(vehicle_iden_status), &iden);
-			// orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
+			_iden_pub = orb_advertise(ORB_ID(vehicle_iden_cmd), &iden);
+			// orb_publish(ORB_ID(vehicle_iden_cmd), _iden_pub, &iden);
 		}
 	}
 

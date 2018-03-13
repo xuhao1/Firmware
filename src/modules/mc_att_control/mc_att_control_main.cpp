@@ -82,7 +82,7 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/vehicle_iden_status.h>
+#include <uORB/topics/vehicle_iden_cmd.h>
 #include <uORB/uORB.h>
 #include <systemlib/mavlink_log.h>
 #include <mathlib/math/filter/LowPassFilter2p.hpp>
@@ -192,7 +192,7 @@ private:
 	struct sensor_gyro_s			_sensor_gyro;		/**< gyro data before thermal correctons and ekf bias estimates are applied */
 	struct sensor_correction_s		_sensor_correction;	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias;		/**< sensor in-run bias corrections */
-	struct vehicle_iden_status_s	_vehicle_iden_status;
+	struct vehicle_iden_cmd_s	_vehicle_iden_cmd;
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
@@ -343,7 +343,7 @@ private:
 	void		vehicle_motor_limits_poll();
 	void		vehicle_rates_setpoint_poll();
 	void		vehicle_status_poll();
-	void 		vehicle_iden_status_poll();
+	void 		vehicle_iden_cmd_poll();
 
 	void inject_control(float t);
 
@@ -426,7 +426,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_sensor_gyro{},
 	_sensor_correction{},
 	_sensor_bias{},
-	_vehicle_iden_status{},
+	_vehicle_iden_cmd{},
 	_saturation_status{},
 	/* performance counters */
 	_loop_perf(perf_alloc(PC_ELAPSED, "mc_att_control")),
@@ -775,27 +775,27 @@ MulticopterAttitudeControl::vehicle_rates_setpoint_poll()
 	}
 }
 void
-MulticopterAttitudeControl::vehicle_iden_status_poll()
+MulticopterAttitudeControl::vehicle_iden_cmd_poll()
 {
 	/* check if there is a new setpoint */
 	bool updated;
 	orb_check(_vehicle_iden_sub, &updated);
 
 	if (updated) {
-		orb_copy(ORB_ID(vehicle_iden_status),_vehicle_iden_sub, &_vehicle_iden_status);
+		orb_copy(ORB_ID(vehicle_iden_cmd),_vehicle_iden_sub, &_vehicle_iden_cmd);
 
 		PX4_INFO("Iden update %u, will wait %3.2f!",
-				 _vehicle_iden_status.iden_state > -1e-2,
-				 _vehicle_iden_status.iden_state
+				 _vehicle_iden_cmd.iden_state > -1e-2,
+				 _vehicle_iden_cmd.iden_state
 		);
 
-		PX4_INFO("CHN %u mode %u",_vehicle_iden_status.inject_channel,
-		_vehicle_iden_status.inject_signal_mode);
+		PX4_INFO("CHN %u mode %u",_vehicle_iden_cmd.inject_channel,
+		_vehicle_iden_cmd.inject_signal_mode);
 		PX4_INFO("START OMG %3.2f END %3.2f time %3.2f amp %3.2f",
-		_vehicle_iden_status.inject_param1,
-		_vehicle_iden_status.inject_param2,
-		_vehicle_iden_status.inject_param3,
-		_vehicle_iden_status.inject_param4
+		_vehicle_iden_cmd.inject_param1,
+		_vehicle_iden_cmd.inject_param2,
+		_vehicle_iden_cmd.inject_param3,
+		_vehicle_iden_cmd.inject_param4
 		);
 
 		reset_inject_process();
@@ -1165,7 +1165,7 @@ MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 }
 
 uint8_t MulticopterAttitudeControl::system_enable_inject(float t) {
-	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_status.iden_state > -1e-2) {
+	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_cmd.iden_state > -1e-2) {
 		if (!is_in_sweep_process) {
 			start_sweep_time = t;
 			mavlink_log_info(&_mavlink_log_pub, "Start sweep");
@@ -1175,14 +1175,14 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t) {
 		is_in_sweep_process = false;
 	}
 
-	if(is_in_sweep_process && ((t - start_sweep_time - _vehicle_iden_status.iden_state) < _params.sw_time))
+	if(is_in_sweep_process && ((t - start_sweep_time - _vehicle_iden_cmd.iden_state) < _params.sw_time))
 	{
 		if(_manual_control_sp.aux4 > 0.9f)
 		{
 			//Inject course by manual, using param defined inject settings
 			return 233;
 		}
-		else if(_vehicle_iden_status.iden_state > -1e-2)
+		else if(_vehicle_iden_cmd.iden_state > -1e-2)
 		{
 			//Inject course by misson, using misson defined inject settings
 			return 1;
@@ -1225,11 +1225,11 @@ void MulticopterAttitudeControl::inject_control(float t) {
 	if (system_enable_inject(t) == 1)
 	{
 		//Inject course by misson, using misson defined inject settings
-		start_omg = _vehicle_iden_status.inject_param1;
-		end_omg = _vehicle_iden_status.inject_param2;
-		sw_time = _vehicle_iden_status.inject_param3;
-		sw_amp = _vehicle_iden_status.inject_param4;
-		t_process_started = t_process_started - _vehicle_iden_status.iden_state;
+		start_omg = _vehicle_iden_cmd.inject_param1;
+		end_omg = _vehicle_iden_cmd.inject_param2;
+		sw_time = _vehicle_iden_cmd.inject_param3;
+		sw_amp = _vehicle_iden_cmd.inject_param4;
+		t_process_started = t_process_started - _vehicle_iden_cmd.iden_state;
 	}
 	if(t_process_started < 0)
 		return;
@@ -1240,7 +1240,7 @@ void MulticopterAttitudeControl::inject_control(float t) {
 				   inject_sweep_filter.apply(0.1f * AWGN_generator());
 	if (system_enable_inject(t) == 1)
 	{
-		actuator_control_inject[_vehicle_iden_status.inject_channel] = inject * sw_amp;
+		actuator_control_inject[_vehicle_iden_cmd.inject_channel] = inject * sw_amp;
 	}
 	else
 	{
@@ -1268,7 +1268,7 @@ MulticopterAttitudeControl::task_main()
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
 	_battery_status_sub = orb_subscribe(ORB_ID(battery_status));
-	_vehicle_iden_sub = orb_subscribe(ORB_ID(vehicle_iden_status));
+	_vehicle_iden_sub = orb_subscribe(ORB_ID(vehicle_iden_cmd));
 
 	_gyro_count = math::min(orb_group_count(ORB_ID(sensor_gyro)), MAX_GYRO_COUNT);
 
@@ -1339,7 +1339,7 @@ MulticopterAttitudeControl::task_main()
 			vehicle_attitude_poll();
 			sensor_correction_poll();
 			sensor_bias_poll();
-			vehicle_iden_status_poll();
+			vehicle_iden_cmd_poll();
 
 			inject_control(hrt_absolute_time()/1000000.0f);
 

@@ -747,7 +747,7 @@ MavlinkReceiver::handle_message_set_mode(mavlink_message_t *msg)
 	union px4_reserved_mode reserved_mode;
 	reserved_mode.reserved = custom_mode.reserved;
 
-	vehicle_iden_status_s iden;
+	vehicle_iden_cmd_s iden;
 	mavlink_log_info(&_mavlink_log_pub, "Inject enable %u channel %u signal_mode %u param1 %u param2 %u",
 					 reserved_mode.enable,
 					 reserved_mode.channel,
@@ -768,11 +768,11 @@ MavlinkReceiver::handle_message_set_mode(mavlink_message_t *msg)
 	{
 		if (_iden_pub != nullptr)
 		{
-			orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
+			orb_publish(ORB_ID(vehicle_iden_cmd), _iden_pub, &iden);
 		}
 		else
 		{
-			_iden_pub = orb_advertise(ORB_ID(vehicle_iden_status), &iden);
+			_iden_pub = orb_advertise(ORB_ID(vehicle_iden_cmd), &iden);
 		}
 	}
 
