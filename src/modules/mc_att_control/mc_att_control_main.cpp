@@ -784,8 +784,11 @@ MulticopterAttitudeControl::vehicle_iden_status_poll()
 	if (updated) {
 		orb_copy(ORB_ID(vehicle_iden_status),_vehicle_iden_sub, &_vehicle_iden_status);
 
+		PX4_INFO("Iden update %u, will wait %3.2f!",
+				 _vehicle_iden_status.iden_state > -1e-2,
+				 _vehicle_iden_status.iden_state
+		);
 
-		PX4_INFO("Vehicle status update enable %u!",_vehicle_iden_status.iden_state);
 		PX4_INFO("CHN %u mode %u",_vehicle_iden_status.inject_channel,
 		_vehicle_iden_status.inject_signal_mode);
 		PX4_INFO("START OMG %3.2f END %3.2f time %3.2f amp %3.2f",
@@ -1162,7 +1165,7 @@ MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 }
 
 uint8_t MulticopterAttitudeControl::system_enable_inject(float t) {
-	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_status.iden_state > 0) {
+	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_status.iden_state > -1e-2) {
 		if (!is_in_sweep_process) {
 			start_sweep_time = t;
 			mavlink_log_info(&_mavlink_log_pub, "Start sweep");
@@ -1172,14 +1175,14 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t) {
 		is_in_sweep_process = false;
 	}
 
-	if(is_in_sweep_process && ((t - start_sweep_time) < _params.sw_time))
+	if(is_in_sweep_process && ((t - start_sweep_time - _vehicle_iden_status.iden_state) < _params.sw_time))
 	{
 		if(_manual_control_sp.aux4 > 0.9f)
 		{
 			//Inject course by manual, using param defined inject settings
 			return 233;
 		}
-		else if(_vehicle_iden_status.iden_state > 0)
+		else if(_vehicle_iden_status.iden_state > -1e-2)
 		{
 			//Inject course by misson, using misson defined inject settings
 			return 1;
@@ -1226,7 +1229,11 @@ void MulticopterAttitudeControl::inject_control(float t) {
 		end_omg = _vehicle_iden_status.inject_param2;
 		sw_time = _vehicle_iden_status.inject_param3;
 		sw_amp = _vehicle_iden_status.inject_param4;
+		t_process_started = t_process_started - _vehicle_iden_status.iden_state;
 	}
+	if(t_process_started < 0)
+		return;
+
 	float inject = sweep_signal_func(t_process_started, sw_time, start_omg,
 									 end_omg, 4.0,
 									 0.0187) +

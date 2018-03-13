@@ -147,7 +147,7 @@ struct mission_item_s {
 	};
 
 	struct {
-		uint8_t enable_inject;
+		float enable_inject;
 		uint8_t inject_channel;
 		uint8_t inject_mode;
 		float inject_param1;

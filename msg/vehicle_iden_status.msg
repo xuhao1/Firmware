@@ -1,8 +1,7 @@
-#define system idenification
-uint8 IDENIFICATION_INJECT_OFF = 0
-uint8 IDENIFICATION_INJECT_ON = 1
-
-uint8 iden_state
+float32 iden_state
+# -1 disable
+# >x>1e-2  start inject now
+# > 0 wait for * sec to start
 
 uint8 IDEN_CHN_ROLL_U_OUT = 0
 uint8 IDEN_CHN_PITCH_U_OUT = 1
