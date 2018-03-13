@@ -728,8 +728,8 @@ union px4_reserved_mode {
 		uint8_t enable:1;
 		uint8_t channel:4;
 		uint8_t inject_signal_mode:3;
-		uint8_t inject_signal_param1:4;
-		uint8_t inject_signal_param2:4;
+		uint8_t inject_param1:4;
+		uint8_t inject_param2:4;
 	};
 	uint16_t reserved;
 };
@@ -752,25 +752,28 @@ MavlinkReceiver::handle_message_set_mode(mavlink_message_t *msg)
 					 reserved_mode.enable,
 					 reserved_mode.channel,
 					 reserved_mode.inject_signal_mode,
-					 reserved_mode.inject_signal_param1,
-					 reserved_mode.inject_signal_param2);
+					 reserved_mode.inject_param1,
+					 reserved_mode.inject_param2);
 
 	iden.timestamp = hrt_absolute_time();
 	iden.iden_state = reserved_mode.enable;
 	iden.inject_channel = reserved_mode.channel;
 	iden.inject_signal_mode = reserved_mode.inject_signal_mode;
-	iden.inject_signal_param1 = reserved_mode.inject_signal_param1;
-	iden.inject_signal_param2 = reserved_mode.inject_signal_param2;
-	iden.inject_signal_param3 = -1;
-	iden.inject_signal_param4 = -1;
+	iden.inject_param1 = -1;//reserved_mode.inject_signal_param1;
+	iden.inject_param2 = -1;//reserved_mode.inject_signal_param2;
+	iden.inject_param3 = -1;
+	iden.inject_param4 = -1;
 
-	if (_iden_pub != nullptr)
+	if (reserved_mode.enable)
 	{
-		orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
-	}
-	else
-	{
-		_iden_pub = orb_advertise(ORB_ID(vehicle_iden_status), &iden);
+		if (_iden_pub != nullptr)
+		{
+			orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
+		}
+		else
+		{
+			_iden_pub = orb_advertise(ORB_ID(vehicle_iden_status), &iden);
+		}
 	}
 
 	struct vehicle_command_s vcmd = {
