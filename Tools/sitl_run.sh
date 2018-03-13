@@ -156,7 +156,9 @@ then
 	echo "######################################################################"
 	read
 else
+	# /Users/xuhao/Develop/Firmware/build/posix_sitl_default/px4 /Users/xuhao/Develop/Firmware /Users/xuhao/Develop/Firmware/posix-configs/SITL/init/ekf2/iris
 	$sitl_command
+	# echo "FUCK"
 fi
 
 if [[ -z "$DONT_RUN" ]]

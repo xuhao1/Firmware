@@ -87,6 +87,7 @@ enum NAV_CMD {
 	NAV_CMD_VIDEO_START_CAPTURE = 2500,
 	NAV_CMD_VIDEO_STOP_CAPTURE = 2501,
 	NAV_CMD_DO_VTOL_TRANSITION = 3000,
+	NAV_CMD_USER1 = 31010,
 	NAV_CMD_INVALID = UINT16_MAX /* ensure that casting a large number results in a specific error */
 };
 
@@ -143,6 +144,16 @@ struct mission_item_s {
 			 altitude_is_relative : 1,		/**< true if altitude is relative from start point	*/
 			 autocontinue : 1,				/**< true if next waypoint should follow after this one */
 			 vtol_back_transition : 1;		/**< part of the vtol back transition sequence */
+	};
+
+	struct {
+		uint8_t enable_inject;
+		uint8_t inject_channel;
+		uint8_t inject_mode;
+		float inject_param1;
+		float inject_param2;
+		float inject_param3;
+		float inject_param4;
 	};
 };
 

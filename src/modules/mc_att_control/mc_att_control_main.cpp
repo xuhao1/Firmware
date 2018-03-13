@@ -82,6 +82,7 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vehicle_iden_status.h>
 #include <uORB/uORB.h>
 #include <systemlib/mavlink_log.h>
 #include <mathlib/math/filter/LowPassFilter2p.hpp>
@@ -309,7 +310,6 @@ private:
 		float board_offset[3];
 
 		float sw_start_omg;
-        float sw_mid_omg;
 		float sw_end_omg;
 		float sw_time;
 		float sw_amp;
@@ -1165,7 +1165,7 @@ void MulticopterAttitudeControl::inject_control(float t) {
 	float t_process_started = t - start_sweep_time;
 
 	//Inject to u
-	float inject = sweep_signal_func(t - start_sweep_time, _params.sw_time, _params.sw_start_omg,
+	float inject = sweep_signal_func(t_process_started, _params.sw_time, _params.sw_start_omg,
 									 _params.sw_end_omg, 4.0,
 									 0.0187) +
 				   inject_sweep_filter.apply(0.1f * AWGN_generator());

@@ -131,6 +131,8 @@ protected:
 
 	orb_advert_t    _actuator_pub{nullptr};
 
+	orb_advert_t 	_iden_pub{nullptr};
+
 	control::BlockParamFloat _param_yaw_timeout;
 	control::BlockParamFloat _param_yaw_err;
 

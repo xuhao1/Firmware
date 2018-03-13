@@ -1405,6 +1405,18 @@ MavlinkMissionManager::parse_mavlink_mission_item(const mavlink_mission_item_t *
 			}
 			break;
 
+		case MAV_CMD_USER_1:
+		case MAV_CMD_DO_SET_MODE:
+			mission_item->nav_cmd = NAV_CMD_USER1;
+			mission_item->enable_inject = mavlink_mission_item->param1 > 0;
+			mission_item->inject_channel = mavlink_mission_item->param2;
+			mission_item->inject_mode = mavlink_mission_item->param3;
+			mission_item->inject_param1 = mavlink_mission_item->param4;
+			mission_item->inject_param2 = mavlink_mission_item->x;
+			mission_item->inject_param3 = mavlink_mission_item->y;
+			mission_item->inject_param4  = mavlink_mission_item->z;
+			break;
+
 		case MAV_CMD_DO_CHANGE_SPEED:
 		case MAV_CMD_DO_SET_HOME:
 		case MAV_CMD_DO_SET_SERVO:

@@ -53,6 +53,7 @@
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vtol_vehicle_status.h>
+#include <uORB/topics/vehicle_iden_status.h>
 
 MissionBlock::MissionBlock(Navigator *navigator, const char *name) :
 	NavigatorMode(navigator, name),
@@ -93,6 +94,7 @@ MissionBlock::is_mission_item_reached()
 	case NAV_CMD_DO_SET_CAM_TRIGG_DIST:
 	case NAV_CMD_DO_SET_CAM_TRIGG_INTERVAL:
 	case NAV_CMD_SET_CAMERA_MODE:
+	case NAV_CMD_USER1:
 		return true;
 
 	case NAV_CMD_DO_VTOL_TRANSITION:
@@ -415,6 +417,27 @@ MissionBlock::issue_command(const mission_item_s &item)
 	// NAV_CMD_DO_LAND_START is only a marker
 	if (item.nav_cmd == NAV_CMD_DO_LAND_START) {
 		return;
+	}
+
+	if (item.nav_cmd == NAV_CMD_USER1)
+	{
+		PX4_INFO("DO_SET IDENIFICATION");
+		vehicle_iden_status_s iden;
+		iden.timestamp = hrt_absolute_time();
+		iden.iden_state = item.enable_inject;
+		iden.inject_channel = item.inject_channel;
+		iden.inject_signal_mode = item.inject_mode;
+		iden.inject_signal_param1 = item.inject_param1;
+		iden.inject_signal_param2 = item.inject_param2;
+		iden.inject_signal_param3 = item.inject_param3;
+		iden.inject_signal_param4 = item.inject_param4;
+
+		if (_iden_pub != nullptr) {
+			orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
+
+		} else {
+			_iden_pub = orb_advertise(ORB_ID(vehicle_iden_status), &iden);
+		}
 	}
 
 	if (item.nav_cmd == NAV_CMD_DO_SET_SERVO) {

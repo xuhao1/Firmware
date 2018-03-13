@@ -89,6 +89,8 @@
 #include "mavlink_receiver.h"
 #include "mavlink_main.h"
 #include "mavlink_command_sender.h"
+#include <systemlib/mavlink_log.h>
+static orb_advert_t _mavlink_log_pub;
 
 static const float mg2ms2 = CONSTANTS_ONE_G / 1000.0f;
 
@@ -721,6 +723,16 @@ MavlinkReceiver::handle_message_hil_optical_flow(mavlink_message_t *msg)
 	}
 }
 
+union px4_reserved_mode {
+	struct {
+		uint8_t enable:1;
+		uint8_t channel:4;
+		uint8_t inject_signal_mode:3;
+		uint8_t inject_signal_param1:4;
+		uint8_t inject_signal_param2:4;
+	};
+	uint16_t reserved;
+};
 void
 MavlinkReceiver::handle_message_set_mode(mavlink_message_t *msg)
 {
@@ -729,6 +741,37 @@ MavlinkReceiver::handle_message_set_mode(mavlink_message_t *msg)
 
 	union px4_custom_mode custom_mode;
 	custom_mode.data = new_mode.custom_mode;
+
+	// mavlink_log_info(_mavlink_log_pub,"Reserved mode %ld",custom_mode.reserved);
+	// mavlink_log_info(_mavlink_log_pub,"size of Reserved %d",sizeof(px4_reserved_mode));
+	union px4_reserved_mode reserved_mode;
+	reserved_mode.reserved = custom_mode.reserved;
+
+	vehicle_iden_status_s iden;
+	mavlink_log_info(&_mavlink_log_pub, "Inject enable %u channel %u signal_mode %u param1 %u param2 %u",
+					 reserved_mode.enable,
+					 reserved_mode.channel,
+					 reserved_mode.inject_signal_mode,
+					 reserved_mode.inject_signal_param1,
+					 reserved_mode.inject_signal_param2);
+
+	iden.timestamp = hrt_absolute_time();
+	iden.iden_state = reserved_mode.enable;
+	iden.inject_channel = reserved_mode.channel;
+	iden.inject_signal_mode = reserved_mode.inject_signal_mode;
+	iden.inject_signal_param1 = reserved_mode.inject_signal_param1;
+	iden.inject_signal_param2 = reserved_mode.inject_signal_param2;
+	iden.inject_signal_param3 = -1;
+	iden.inject_signal_param4 = -1;
+
+	if (_iden_pub != nullptr)
+	{
+		orb_publish(ORB_ID(vehicle_iden_status), _iden_pub, &iden);
+	}
+	else
+	{
+		_iden_pub = orb_advertise(ORB_ID(vehicle_iden_status), &iden);
+	}
 
 	struct vehicle_command_s vcmd = {
 		.timestamp = hrt_absolute_time(),
@@ -746,8 +789,7 @@ MavlinkReceiver::handle_message_set_mode(mavlink_message_t *msg)
 		.source_system = msg->sysid,
 		.source_component = msg->compid,
 		.confirmation = 1,
-		.from_external = true
-	};
+		.from_external = true};
 
 	if (_cmd_pub == nullptr) {
 		_cmd_pub = orb_advertise_queue(ORB_ID(vehicle_command), &vcmd, vehicle_command_s::ORB_QUEUE_LENGTH);
