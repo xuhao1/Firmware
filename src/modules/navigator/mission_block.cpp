@@ -431,12 +431,12 @@ MissionBlock::issue_command(const mission_item_s &item)
 		iden.inject_param2 = item.inject_param2;
 		iden.inject_param3 = item.inject_param3;
 		iden.inject_param4 = item.inject_param4;
-		PX4_INFO("Enable %u chn %u mode %3.2f", item.enable_inject, item.inject_channel, item.inject_mode);
+		PX4_INFO("Enable %3.2f chn %u mode %u", (double)item.enable_inject, item.inject_channel,item.inject_mode);
 		PX4_INFO("params %3.2f %3.2f %3.2f %3.2f",
-				 item.inject_param1,
-				 item.inject_param2,
-				 item.inject_param3,
-				 item.inject_param4);
+				 (double)item.inject_param1,
+				 (double)item.inject_param2,
+				 (double)item.inject_param3,
+				 (double)item.inject_param4);
 
 		if (_iden_pub != nullptr)
 		{

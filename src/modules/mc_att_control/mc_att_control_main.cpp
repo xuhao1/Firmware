@@ -83,6 +83,7 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_iden_cmd.h>
+#include <uORB/topics/vehicle_iden_status.h>
 #include <uORB/uORB.h>
 #include <systemlib/mavlink_log.h>
 #include <mathlib/math/filter/LowPassFilter2p.hpp>
@@ -175,6 +176,8 @@ private:
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub;	/**< controller status publication */
 
+	orb_advert_t	_vehicle_iden_status_pub;
+
 	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
 
@@ -193,6 +196,7 @@ private:
 	struct sensor_correction_s		_sensor_correction;	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias;		/**< sensor in-run bias corrections */
 	struct vehicle_iden_cmd_s	_vehicle_iden_cmd;
+	struct vehicle_iden_status_s _vehicle_iden_status;
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
@@ -349,6 +353,8 @@ private:
 
 	void reset_inject_process();
 
+	void record_inject_records();
+
 	uint8_t system_enable_inject(float t);
 
 	/**
@@ -409,6 +415,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_v_rates_sp_pub(nullptr),
 	_actuators_0_pub(nullptr),
 	_controller_status_pub(nullptr),
+	_vehicle_iden_status_pub(nullptr),
 	_rates_sp_id(nullptr),
 	_actuators_id(nullptr),
 
@@ -472,6 +479,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_thrust_sp = 0.0f;
 	_att_control.zero();
 	_rate_inject.zero();
+
+	_vehicle_iden_cmd.iden_state = -1;
 
 	_I.identity();
 	_board_rotation.identity();
@@ -781,23 +790,29 @@ MulticopterAttitudeControl::vehicle_iden_cmd_poll()
 	bool updated;
 	orb_check(_vehicle_iden_sub, &updated);
 
-	if (updated) {
-		orb_copy(ORB_ID(vehicle_iden_cmd),_vehicle_iden_sub, &_vehicle_iden_cmd);
+	if (updated)
+	{
+		orb_copy(ORB_ID(vehicle_iden_cmd), _vehicle_iden_sub, &_vehicle_iden_cmd);
 
 		PX4_INFO("Iden update %u, will wait %3.2f!",
-				 _vehicle_iden_cmd.iden_state > -1e-2,
-				 _vehicle_iden_cmd.iden_state
-		);
+				 _vehicle_iden_cmd.iden_state > -1e-2f,
+				 (double)_vehicle_iden_cmd.iden_state);
 
-		PX4_INFO("CHN %u mode %u",_vehicle_iden_cmd.inject_channel,
-		_vehicle_iden_cmd.inject_signal_mode);
+		PX4_INFO("CHN %u mode %u", _vehicle_iden_cmd.inject_channel,
+				 _vehicle_iden_cmd.inject_signal_mode);
 		PX4_INFO("START OMG %3.2f END %3.2f time %3.2f amp %3.2f",
-		_vehicle_iden_cmd.inject_param1,
-		_vehicle_iden_cmd.inject_param2,
-		_vehicle_iden_cmd.inject_param3,
-		_vehicle_iden_cmd.inject_param4
-		);
+				 (double)_vehicle_iden_cmd.inject_param1,
+				 (double)_vehicle_iden_cmd.inject_param2,
+				 (double)_vehicle_iden_cmd.inject_param3,
+				 (double)_vehicle_iden_cmd.inject_param4);
 
+		_vehicle_iden_status.inject_channel = _vehicle_iden_cmd.inject_channel;
+		_vehicle_iden_status.inject_signal_mode = _vehicle_iden_cmd.inject_signal_mode;
+		_vehicle_iden_status.inject_param1 = _vehicle_iden_cmd.inject_param1;
+		_vehicle_iden_status.inject_param2 = _vehicle_iden_cmd.inject_param2;
+		_vehicle_iden_status.inject_param3 = _vehicle_iden_cmd.inject_param3;
+		_vehicle_iden_status.inject_param4 = _vehicle_iden_cmd.inject_param4;
+		_vehicle_iden_status.iden_wait_time = _vehicle_iden_cmd.iden_state;
 		reset_inject_process();
 	}
 }
@@ -1164,25 +1179,47 @@ MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 	mc_att_control::g_control->task_main();
 }
 
-uint8_t MulticopterAttitudeControl::system_enable_inject(float t) {
-	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_cmd.iden_state > -1e-2) {
-		if (!is_in_sweep_process) {
+uint8_t MulticopterAttitudeControl::system_enable_inject(float t)
+{
+	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_cmd.iden_state > -1e-2f)
+	{
+		if (!is_in_sweep_process)
+		{
 			start_sweep_time = t;
 			mavlink_log_info(&_mavlink_log_pub, "Start sweep");
+			PX4_INFO("Start sweep");
+			if (_manual_control_sp.aux4 > 0.9f)
+			{
+				PX4_INFO("Sweep start by manual");
+				//Inject to u
+				_vehicle_iden_status.inject_channel = inject_channel;
+				_vehicle_iden_status.inject_signal_mode = 0;
+				_vehicle_iden_status.inject_param1 = _params.sw_start_omg;
+				_vehicle_iden_status.inject_param2 = _params.sw_end_omg;
+				_vehicle_iden_status.inject_param3 = _params.sw_time;
+				_vehicle_iden_status.inject_param4 = _params.sw_amp;
+				_vehicle_iden_status.iden_wait_time = 0;
+			}
+			else
+			{
+				PX4_INFO("Sweep start by CMD");
+			}
 		}
 		is_in_sweep_process = true;
-	} else {
+	}
+	else
+	{
 		is_in_sweep_process = false;
 	}
 
-	if(is_in_sweep_process && ((t - start_sweep_time - _vehicle_iden_cmd.iden_state) < _params.sw_time))
+	if (is_in_sweep_process && ((t - start_sweep_time - _vehicle_iden_cmd.iden_state) < _params.sw_time))
 	{
-		if(_manual_control_sp.aux4 > 0.9f)
+		if (_manual_control_sp.aux4 > 0.9f)
 		{
 			//Inject course by manual, using param defined inject settings
 			return 233;
 		}
-		else if(_vehicle_iden_cmd.iden_state > -1e-2)
+		else if(_vehicle_iden_cmd.iden_state > -1e-2f)
 		{
 			//Inject course by misson, using misson defined inject settings
 			return 1;
@@ -1194,6 +1231,20 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t) {
 void 
 MulticopterAttitudeControl::reset_inject_process(){
 	is_in_sweep_process = false;
+}
+
+void MulticopterAttitudeControl::record_inject_records()
+{
+if (_vehicle_iden_status_pub != nullptr)
+	{
+		orb_publish(ORB_ID(vehicle_iden_status), _vehicle_iden_status_pub,
+					&_vehicle_iden_status);
+	}
+	else if (_vehicle_iden_status_pub)
+	{
+		_vehicle_iden_status_pub = orb_advertise(ORB_ID(vehicle_iden_status),
+												 &_vehicle_iden_status);
+	}
 }
 
 void MulticopterAttitudeControl::inject_control(float t) {
@@ -1209,47 +1260,47 @@ void MulticopterAttitudeControl::inject_control(float t) {
     _rate_inject(1) = 0;
     _rate_inject(2) = 0;
 
-    if (not system_enable_inject(t))
+    if ( !system_enable_inject(t))
 	{
+		_vehicle_iden_status.iden_start_time = -1;
+		_vehicle_iden_status.inject_value = 0;
+		record_inject_records();
 		return;
 	}
 
-	float t_process_started = t - start_sweep_time;
+	float t_process_started = t - start_sweep_time - _vehicle_iden_status.iden_wait_time;
 
-	//Inject to u
-	float sw_time = _params.sw_time;
-	float start_omg = _params.sw_start_omg;
-	float end_omg = _params.sw_end_omg;
-	float sw_amp = _params.sw_amp;
+	float start_omg = _vehicle_iden_status.inject_param1;
+	float end_omg = _vehicle_iden_status.inject_param2;
+	float sw_time = _vehicle_iden_status.inject_param3;
+	float sw_amp = _vehicle_iden_status.inject_param4;
+	int chn = _vehicle_iden_status.inject_channel;
 
-	if (system_enable_inject(t) == 1)
-	{
-		//Inject course by misson, using misson defined inject settings
-		start_omg = _vehicle_iden_cmd.inject_param1;
-		end_omg = _vehicle_iden_cmd.inject_param2;
-		sw_time = _vehicle_iden_cmd.inject_param3;
-		sw_amp = _vehicle_iden_cmd.inject_param4;
-		t_process_started = t_process_started - _vehicle_iden_cmd.iden_state;
-	}
-	if(t_process_started < 0)
+	if (t_process_started < 0)
 		return;
 
 	float inject = sweep_signal_func(t_process_started, sw_time, start_omg,
 									 end_omg, 4.0,
 									 0.0187) +
 				   inject_sweep_filter.apply(0.1f * AWGN_generator());
-	if (system_enable_inject(t) == 1)
-	{
-		actuator_control_inject[_vehicle_iden_cmd.inject_channel] = inject * sw_amp;
-	}
-	else
-	{
-		actuator_control_inject[inject_channel] = inject * sw_amp;
-	}
+	actuator_control_inject[chn] = inject * sw_amp;
+
+	//Record vehicle idenification status
+	_vehicle_iden_status.inject_value = inject*sw_amp;
+	_vehicle_iden_status.iden_start_time = t_process_started;
+
+	record_inject_records();
+
 	if (count % 50 == 0)
+	{
 		mavlink_log_info(&_mavlink_log_pub, "Sweep %4.3f u %3.2f",
 						 (double)t_process_started,
 						 (double)actuator_control_inject[inject_channel]);
+
+		PX4_INFO("Sweep %4.3f u %3.2f",
+						 (double)t_process_started,
+						 (double)actuator_control_inject[inject_channel]);
+	}
 }
 
 void

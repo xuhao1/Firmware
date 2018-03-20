@@ -122,6 +122,7 @@ set(msg_files
 	vtol_vehicle_status.msg
 	wind_estimate.msg
 	vehicle_iden_cmd.msg
+	vehicle_iden_status.msg
 	)
 
 px4_add_git_submodule(TARGET git_gencpp PATH tools/gencpp)

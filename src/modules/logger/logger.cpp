@@ -680,6 +680,7 @@ void Logger::add_system_identification_topics()
 	add_topic("sensor_combined");
 	add_topic("sensor_gyro");
 	add_topic("sensor_accel");
+	add_topic("vehicle_iden_status");
 }
 
 int Logger::add_topics_from_file(const char *fname)
