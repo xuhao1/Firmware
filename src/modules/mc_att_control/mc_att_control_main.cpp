@@ -1181,7 +1181,8 @@ MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 
 uint8_t MulticopterAttitudeControl::system_enable_inject(float t)
 {
-	if (_manual_control_sp.aux4 > 0.9f || _vehicle_iden_cmd.iden_state > -1e-2f)
+	if ((_manual_control_sp.aux4 > 0.9f && !_v_control_mode.flag_control_auto_enabled) ||
+		(_vehicle_iden_cmd.iden_state > -1e-2f && _v_control_mode.flag_control_auto_enabled))
 	{
 		if (!is_in_sweep_process)
 		{
@@ -1210,9 +1211,10 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t)
 	else
 	{
 		is_in_sweep_process = false;
+		return 0;
 	}
 
-	if (is_in_sweep_process && ((t - start_sweep_time - _vehicle_iden_cmd.iden_state) < _params.sw_time))
+	if ((t - start_sweep_time - _vehicle_iden_cmd.iden_state) < _params.sw_time)
 	{
 		if (_manual_control_sp.aux4 > 0.9f)
 		{
@@ -1225,6 +1227,10 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t)
 			return 1;
 		}
 	}
+	else{
+		//Process finished
+		return -1;
+	}
 	return 0;
 }
 
@@ -1235,12 +1241,13 @@ MulticopterAttitudeControl::reset_inject_process(){
 
 void MulticopterAttitudeControl::record_inject_records()
 {
-if (_vehicle_iden_status_pub != nullptr)
+	_vehicle_iden_status.timestamp = hrt_absolute_time();
+	if (_vehicle_iden_status_pub != nullptr)
 	{
 		orb_publish(ORB_ID(vehicle_iden_status), _vehicle_iden_status_pub,
 					&_vehicle_iden_status);
 	}
-	else if (_vehicle_iden_status_pub)
+	else
 	{
 		_vehicle_iden_status_pub = orb_advertise(ORB_ID(vehicle_iden_status),
 												 &_vehicle_iden_status);
@@ -1260,7 +1267,8 @@ void MulticopterAttitudeControl::inject_control(float t) {
     _rate_inject(1) = 0;
     _rate_inject(2) = 0;
 
-    if ( !system_enable_inject(t))
+	//Not start or finished
+	if (system_enable_inject(t) <= 0)
 	{
 		_vehicle_iden_status.iden_start_time = -1;
 		_vehicle_iden_status.inject_value = 0;
@@ -1283,10 +1291,14 @@ void MulticopterAttitudeControl::inject_control(float t) {
 									 end_omg, 4.0,
 									 0.0187) +
 				   inject_sweep_filter.apply(0.1f * AWGN_generator());
-	actuator_control_inject[chn] = inject * sw_amp;
+	inject = inject * sw_amp;
+
+
+	if(!isnan(inject))
+		actuator_control_inject[chn] = inject;
 
 	//Record vehicle idenification status
-	_vehicle_iden_status.inject_value = inject*sw_amp;
+	_vehicle_iden_status.inject_value = inject;
 	_vehicle_iden_status.iden_start_time = t_process_started;
 
 	record_inject_records();
