@@ -1235,6 +1235,20 @@ int
 MavlinkMissionManager::parse_mavlink_mission_item(const mavlink_mission_item_t *mavlink_mission_item,
 		struct mission_item_s *mission_item)
 {
+	orb_advert_t _mavlink_log_pub = 0;
+
+/*
+	mavlink_log_info(&_mavlink_log_pub, "Add mission");
+	mavlink_log_info(&_mavlink_log_pub, "Param %4.3f %4.3f %4.3f %4.3f",
+					 (double)mavlink_mission_item->param1,
+					 (double)mavlink_mission_item->param2,
+					 (double)mavlink_mission_item->param3,
+					 (double)mavlink_mission_item->param4);
+	mavlink_log_info(&_mavlink_log_pub, "Param %4.3f %4.3f %4.3f",
+					 (double)mavlink_mission_item->x,
+					 (double)mavlink_mission_item->y,
+					 (double)mavlink_mission_item->z);
+*/
 	if (mavlink_mission_item->frame == MAV_FRAME_GLOBAL ||
 	    mavlink_mission_item->frame == MAV_FRAME_GLOBAL_RELATIVE_ALT ||
 	    (_int_mode && (mavlink_mission_item->frame == MAV_FRAME_GLOBAL_INT ||
@@ -1407,6 +1421,8 @@ MavlinkMissionManager::parse_mavlink_mission_item(const mavlink_mission_item_t *
 
 		case MAV_CMD_USER_1:
 		case MAV_CMD_DO_SET_MODE:
+		{
+
 			mission_item->nav_cmd = NAV_CMD_USER1;
 			mission_item->enable_inject = mavlink_mission_item->param1;
 			mission_item->inject_channel = mavlink_mission_item->param2;
@@ -1415,7 +1431,21 @@ MavlinkMissionManager::parse_mavlink_mission_item(const mavlink_mission_item_t *
 			mission_item->inject_param2 = mavlink_mission_item->x;
 			mission_item->inject_param3 = mavlink_mission_item->y;
 			mission_item->inject_param4  = mavlink_mission_item->z;
+
+			// orb_advert_t _mavlink_log_pub = 0;
+
+			mavlink_log_info(&_mavlink_log_pub, "Inject mission");
+			mavlink_log_info(&_mavlink_log_pub, "Param %4.3f %4.3f %4.3f %4.3f",
+							 (double)mavlink_mission_item->param1,
+							 (double)mavlink_mission_item->param2,
+							 (double)mavlink_mission_item->param3,
+							 (double)mavlink_mission_item->param4);
+			mavlink_log_info(&_mavlink_log_pub, "Param %4.3f %4.3f %4.3f",
+							 (double)mavlink_mission_item->x,
+							 (double)mavlink_mission_item->y,
+							 (double)mavlink_mission_item->z);
 			break;
+		}
 
 		case MAV_CMD_DO_CHANGE_SPEED:
 		case MAV_CMD_DO_SET_HOME:

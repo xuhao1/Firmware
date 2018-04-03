@@ -320,13 +320,16 @@ private:
 		float sw_time;
 		float sw_amp;
 		float sw_amp_rate_cmd;
+		bool lock_thr_while_sweep = true;
 	}		_params;
 
 	TailsitterRecovery *_ts_opt_recovery{nullptr};	/**< Computes optimal rates for tailsitter recovery */
 
 	math::LowPassFilter2p inject_sweep_filter;
 	float start_sweep_time;
+	bool using_trim_thr;
 	bool is_in_sweep_process;
+	float sweep_trim_thr = 0;
 	orb_advert_t    _mavlink_log_pub;
 	/**
 	 * Update our local parameter cache.
@@ -1189,6 +1192,7 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t)
 			start_sweep_time = t;
 			mavlink_log_info(&_mavlink_log_pub, "Start sweep");
 			PX4_INFO("Start sweep");
+
 			if (_manual_control_sp.aux4 > 0.9f)
 			{
 				PX4_INFO("Sweep start by manual");
@@ -1266,10 +1270,12 @@ void MulticopterAttitudeControl::inject_control(float t) {
     _rate_inject(0) = 0;
     _rate_inject(1) = 0;
     _rate_inject(2) = 0;
+	using_trim_thr = false;
 
 	//Not start or finished
 	if (system_enable_inject(t) <= 0)
 	{
+		sweep_trim_thr = _v_att_sp.thrust;
 		_vehicle_iden_status.iden_start_time = -1;
 		_vehicle_iden_status.inject_value = 0;
 		record_inject_records();
@@ -1285,22 +1291,35 @@ void MulticopterAttitudeControl::inject_control(float t) {
 	int chn = _vehicle_iden_status.inject_channel;
 
 	if (t_process_started < 0)
+	{
+		sweep_trim_thr = _v_att_sp.thrust;
 		return;
+	}
 
-	float inject = sweep_signal_func(t_process_started, sw_time, start_omg,
-									 end_omg, 4.0,
-									 0.0187) +
-				   inject_sweep_filter.apply(0.1f * AWGN_generator());
-	inject = inject * sw_amp;
+	if (t_process_started < sw_time)
+	{
+		float inject = sweep_signal_func(t_process_started, sw_time, start_omg,
+										 end_omg, 4.0,
+										 0.0187) +
+					   inject_sweep_filter.apply(0.1f * AWGN_generator());
+		inject = inject * sw_amp;
 
+		//Record vehicle idenification status
+		_vehicle_iden_status.inject_value = inject;
 
-	if(!isnan(inject))
-		actuator_control_inject[chn] = inject;
-
-	//Record vehicle idenification status
-	_vehicle_iden_status.inject_value = inject;
-	_vehicle_iden_status.iden_start_time = t_process_started;
-
+		//Be very careful with this!
+		using_trim_thr = true;
+		_vehicle_iden_status.iden_start_time = t_process_started;
+		if (!isnan(inject))
+			actuator_control_inject[chn] = inject;
+	}
+	else
+	{
+		using_trim_thr = false;
+		sweep_trim_thr = _v_att_sp.thrust;
+		_vehicle_iden_status.iden_start_time = -1;
+		_vehicle_iden_status.inject_value = 0;
+	}
 	record_inject_records();
 
 	if (count % 50 == 0)
@@ -1506,6 +1525,11 @@ MulticopterAttitudeControl::task_main()
 				_actuators.control[1] += actuator_control_inject[1];
 				_actuators.control[2] += actuator_control_inject[2];
 				_actuators.control[3] += actuator_control_inject[3];
+
+				if(using_trim_thr && _params.lock_thr_while_sweep)
+				{
+					_actuators.control[3] = (PX4_ISFINITE(sweep_trim_thr)) ? sweep_trim_thr : _actuators.control[3]; //using trim
+				}
 
 				/* scale effort by battery status */
 				if (_params.bat_scale_en && _battery_status.scale > 0.0f) {
