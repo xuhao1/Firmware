@@ -412,6 +412,17 @@ pipeline {
 
       parallel {
 
+        stage('doxygen') {
+          agent {
+            docker { image 'px4io/px4-dev-base:2018-03-30' }
+          }
+          steps {
+            sh 'make distclean'
+            //sh 'make posix_sitl_default doxygen'
+            sh 'make distclean'
+          }
+        }
+
         stage('airframe') {
           agent {
             docker { image 'px4io/px4-dev-base:2018-03-30' }
