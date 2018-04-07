@@ -407,6 +407,41 @@ pipeline {
           }
         }
 
+        stage('px4fmu-v2') {
+          agent {
+            docker {
+              image 'px4io/px4-dev-nuttx:2018-03-30'
+              args '-e CCACHE_BASEDIR=$WORKSPACE -v ${CCACHE_DIR}:${CCACHE_DIR}:rw -e HOME=$WORKSPACE'
+            }
+          }
+          steps {
+            sh 'export'
+            // unarchive px4fmu-v2 binary
+            // power off pixhawk: sudo ./uhubctl --vendor "2109:2811" -a off -p 1
+            // flash
+            // monitor serial
+          }
+          steps {
+            parallel {
+
+              stage('Flashing (USB)') {
+                timeout(time: 120, unit: 'SECONDS') {
+                  sh './Tools/HIL/reboot_device.sh USB'
+                  sh './Tools/px_uploader.py --port $USB_DEVICE --baud-flightstack 115200 --baud-bootloader 115200 ./build/px4fmu-v4_default/px4fmu-v4_default.px4'
+                  sh './Tools/HIL/reboot_device.sh USB'
+                }
+              },
+
+              stage('Monitoring (FTDI)') {
+                timeout(time: 120, unit: 'SECONDS') {
+                  sh './Tools/HIL/reboot_device.sh FTDI'
+                  sh './Tools/HIL/monitor_firmware_upload.py --device $FTDI_DEVICE --baudrate 57600'
+                }
+              }
+            }
+          }
+        } // px4fmu-v2
+
       }
     }
 
