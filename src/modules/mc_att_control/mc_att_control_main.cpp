@@ -1190,7 +1190,12 @@ uint8_t MulticopterAttitudeControl::system_enable_inject(float t)
 		if (!is_in_sweep_process)
 		{
 			start_sweep_time = t;
-			mavlink_log_info(&_mavlink_log_pub, "Start sweep");
+			mavlink_log_info(&_mavlink_log_pub, "Start sweep using %4.3f %4.3f %4.3f %4.3f",
+							 (double)_vehicle_iden_status.inject_param1,
+							 (double)_vehicle_iden_status.inject_param2,
+							 (double)_vehicle_iden_status.inject_param3,
+							 (double)_vehicle_iden_status.inject_param4);
+
 			PX4_INFO("Start sweep");
 
 			if (_manual_control_sp.aux4 > 0.9f)
